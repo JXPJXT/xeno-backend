@@ -1,0 +1,2254 @@
+// ===========================================
+// XENO AI DECISIONING PLATFORM
+// Prisma Schema — Complete Database Design
+// ===========================================
+// 
+// Philosophy: Identity → Behavior → Intelligence → Decision → Execution → Outcome → Learning
+// Multi-tenancy: Shared schema with tenant_id discriminator
+// Immutability: Events and audit logs are append-only
+// Versioning: Critical entities preserve history
+// Soft Delete: Business entities use deleted_at
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================
+// ENUMS
+// ===========================================
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+}
+
+enum TenantPlan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  MARKETER
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  INVITED
+}
+
+enum CustomerGender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum ActorType {
+  SYSTEM
+  USER
+  API
+}
+
+enum PersonaAssignedBy {
+  SYSTEM
+  MANUAL
+  AI
+}
+
+enum PersonaStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SegmentType {
+  STATIC
+  DYNAMIC
+  AI_GENERATED
+}
+
+enum SegmentStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum GoalType {
+  REACTIVATION
+  RETENTION
+  ACQUISITION
+  UPSELL
+  CROSS_SELL
+  ENGAGEMENT
+  WIN_BACK
+  LOYALTY
+  CUSTOM
+}
+
+enum GoalStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum DecisionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  APPROVED
+  REJECTED
+}
+
+enum CampaignType {
+  ONE_TIME
+  RECURRING
+  TRIGGERED
+  AI_GENERATED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum ChannelType {
+  EMAIL
+  SMS
+  PUSH
+  WHATSAPP
+  MULTI_CHANNEL
+}
+
+enum CampaignAudienceStatus {
+  INCLUDED
+  EXCLUDED
+  SENT
+  SKIPPED
+}
+
+enum CommunicationStatus {
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  FAILED
+  BOUNCED
+}
+
+enum DeliveryEventType {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  COMPLAINED
+  UNSUBSCRIBED
+  FAILED
+}
+
+enum AttributionModel {
+  FIRST_TOUCH
+  LAST_TOUCH
+  LINEAR
+  TIME_DECAY
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  IMPORT
+  APPROVE
+  REJECT
+  LAUNCH
+  PAUSE
+  CANCEL
+}
+
+enum AIAgentType {
+  INTENT
+  CONTENT
+  INSIGHTS
+  DECISION
+}
+
+enum AIInteractionStatus {
+  SUCCESS
+  ERROR
+  TIMEOUT
+}
+
+enum ChannelProviderStatus {
+  ACTIVE
+  INACTIVE
+  DEGRADED
+}
+
+// ===========================================
+// PHASE 2A ENUMS
+// ===========================================
+
+// Customer Identity
+enum IdentityType {
+  EMAIL
+  PHONE
+  LOYALTY_ID
+  EXTERNAL_CRM_ID
+  WHATSAPP_ID
+}
+
+enum AddressType {
+  BILLING
+  SHIPPING
+  HOME
+  WORK
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+  DESKTOP
+}
+
+// Communication Preferences
+enum ConsentType {
+  EMAIL_MARKETING
+  SMS_MARKETING
+  WHATSAPP_MARKETING
+  PUSH_MARKETING
+  ANALYTICS
+  PERSONALIZATION
+}
+
+enum ConsentStatus {
+  GRANTED
+  REVOKED
+  PENDING
+}
+
+// Product Catalog
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+  OUT_OF_STOCK
+}
+
+// Feature Store
+enum FeatureDataType {
+  NUMERIC
+  CATEGORICAL
+  BOOLEAN
+  ARRAY
+  JSON
+}
+
+enum FeatureStatus {
+  ACTIVE
+  DEPRECATED
+  EXPERIMENTAL
+}
+
+enum ComputationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// Offers
+enum OfferType {
+  PERCENTAGE_DISCOUNT
+  FLAT_DISCOUNT
+  FREE_SHIPPING
+  BUY_X_GET_Y
+  CASHBACK
+  LOYALTY_POINTS
+  BUNDLE
+  CUSTOM
+}
+
+enum OfferStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
+}
+
+// Workflows
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum WorkflowStepType {
+  ACTION
+  CONDITION
+  DELAY
+  SPLIT
+  WEBHOOK
+  APPROVAL
+}
+
+enum WorkflowExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  PAUSED
+}
+
+// AI Memory
+enum MemoryType {
+  FACT
+  PREFERENCE
+  STRATEGY
+  INSIGHT
+  PATTERN
+}
+
+enum FeedbackSentiment {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+}
+
+// ===========================================
+// DOMAIN 1: TENANT
+// ===========================================
+
+model Tenant {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String       @db.VarChar(255)
+  slug      String       @unique @db.VarChar(100)
+  domain    String?      @db.VarChar(255)
+  settings  Json?        @default("{}")
+  status    TenantStatus @default(ACTIVE)
+  plan      TenantPlan   @default(FREE)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  users               User[]
+  customers            Customer[]
+  customerTags         CustomerTag[]
+  orders               Order[]
+  orderItems           OrderItem[]
+  events               Event[]
+  customerMetrics      CustomerMetric[]
+  customerMetricsHistory CustomerMetricHistory[]
+  customerFeatures     CustomerFeature[]
+  personas             Persona[]
+  customerPersonas     CustomerPersona[]
+  segments             Segment[]
+  segmentCustomers     SegmentCustomer[]
+  segmentVersions      SegmentVersion[]
+  businessGoals        BusinessGoal[]
+  decisions            Decision[]
+  decisionOutcomes     DecisionOutcome[]
+  campaigns            Campaign[]
+  campaignVersions     CampaignVersion[]
+  campaignMessages     CampaignMessage[]
+  campaignAudiences    CampaignAudience[]
+  communicationLogs    CommunicationLog[]
+  deliveryReceipts     DeliveryReceipt[]
+  campaignAnalytics    CampaignAnalytic[]
+  revenueAttributions  RevenueAttribution[]
+  auditLogs            AuditLog[]
+  aiInteractions       AIInteraction[]
+  learningExamples     LearningExample[]
+  rateLimitRules       RateLimitRule[]
+  apiUsageLogs         ApiUsageLog[]
+  channelProviders     ChannelProvider[]
+  deliveryEvents       DeliveryEvent[]
+  // Phase 2A relations
+  customerIdentities     CustomerIdentity[]
+  customerAddresses      CustomerAddress[]
+  customerDevices        CustomerDevice[]
+  customerChannels       CustomerChannel[]
+  customerPreferences    CustomerPreference[]
+  customerConsents       CustomerConsent[]
+  productCategories      ProductCategory[]
+  products               Product[]
+  productAttributes      ProductAttribute[]
+  productAttributeValues ProductAttributeValue[]
+  customerProductAffinities CustomerProductAffinity[]
+  featureDefinitions     FeatureDefinition[]
+  featureVersions        FeatureVersion[]
+  featureComputationRuns FeatureComputationRun[]
+  decisionTemplates      DecisionTemplate[]
+  decisionRules          DecisionRule[]
+  decisionExplanations   DecisionExplanation[]
+  decisionExperiments    DecisionExperiment[]
+  offers                 Offer[]
+  offerTemplates         OfferTemplate[]
+  offerAssignments       OfferAssignment[]
+  offerPerformances      OfferPerformance[]
+  workflows              Workflow[]
+  workflowSteps          WorkflowStep[]
+  workflowExecutions     WorkflowExecution[]
+  workflowExecutionSteps WorkflowExecutionStep[]
+  agentMemories          AgentMemory[]
+  agentObservations      AgentObservation[]
+  agentFeedbacks         AgentFeedback[]
+  metricDefinitions      MetricDefinition[]
+  metricSnapshots        MetricSnapshot[]
+  dashboardWidgets       DashboardWidget[]
+  // Phase 3.5 relations
+  customerCategoryAffinities CustomerCategoryAffinity[]
+  offerVersions          OfferVersion[]
+  conversations          Conversation[]
+
+  @@map("tenants")
+}
+
+// ===========================================
+// DOMAIN 2: AUTH
+// ===========================================
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  email        String     @db.VarChar(255)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  firstName    String     @map("first_name") @db.VarChar(100)
+  lastName     String     @map("last_name") @db.VarChar(100)
+  role         UserRole   @default(VIEWER)
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdSegments  Segment[]          @relation("SegmentCreator")
+  segmentVersions  SegmentVersion[]   @relation("SegmentVersionChanger")
+  createdGoals     BusinessGoal[]     @relation("GoalCreator")
+  approvedDecisions Decision[]        @relation("DecisionApprover")
+  decisionFeedback DecisionOutcome[]  @relation("OutcomeFeedbackBy")
+  createdCampaigns Campaign[]         @relation("CampaignCreator")
+  campaignVersions CampaignVersion[]  @relation("CampaignVersionChanger")
+  auditLogs        AuditLog[]
+  conversations    Conversation[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([status])
+  @@map("users")
+}
+
+// ===========================================
+// DOMAIN 3: CUSTOMER (with normalized tags)
+// ===========================================
+
+model Customer {
+  id                String         @id @default(uuid()) @db.Uuid
+  tenantId          String         @map("tenant_id") @db.Uuid
+  externalId        String?        @map("external_id") @db.VarChar(255)
+  email             String?        @db.VarChar(255)
+  phone             String?        @db.VarChar(50)
+  firstName         String?        @map("first_name") @db.VarChar(100)
+  lastName          String?        @map("last_name") @db.VarChar(100)
+  gender            CustomerGender @default(UNKNOWN)
+  dateOfBirth       DateTime?      @map("date_of_birth") @db.Date
+  city              String?        @db.VarChar(100)
+  state             String?        @db.VarChar(100)
+  country           String?        @db.VarChar(10) // ISO 3166-1 alpha-2
+  metadata          Json?          @default("{}")
+  status            CustomerStatus @default(ACTIVE)
+  acquisitionSource String?        @map("acquisition_source") @db.VarChar(100)
+  acquisitionDate   DateTime?      @map("acquisition_date") @db.Timestamptz
+  firstSeenAt       DateTime?      @map("first_seen_at") @db.Timestamptz
+  lastSeenAt        DateTime?      @map("last_seen_at") @db.Timestamptz
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?      @map("deleted_at") @db.Timestamptz // Soft delete
+
+  // Relations
+  tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tagAssignments     CustomerTagAssignment[]
+  orders             Order[]
+  customerMetrics    CustomerMetric[]
+  customerMetricsHistory CustomerMetricHistory[]
+  customerFeatures   CustomerFeature[]
+  customerPersonas   CustomerPersona[]
+  segmentCustomers   SegmentCustomer[]
+  campaignAudiences  CampaignAudience[]
+  communicationLogs  CommunicationLog[]
+  revenueAttributions RevenueAttribution[]
+  // Phase 2A relations
+  identities             CustomerIdentity[]
+  addresses              CustomerAddress[]
+  devices                CustomerDevice[]
+  channels               CustomerChannel[]
+  preferences            CustomerPreference?
+  consents               CustomerConsent[]
+  productAffinities      CustomerProductAffinity[]
+  offerAssignments       OfferAssignment[]
+  categoryAffinities     CustomerCategoryAffinity[]
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId])
+  @@index([tenantId, email])
+  @@index([status])
+  @@index([city])
+  @@index([country])
+  @@index([acquisitionSource])
+  @@map("customers")
+}
+
+// Normalized Tags
+model CustomerTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(100)
+  color     String?  @db.VarChar(7) // Hex color
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant      Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignments CustomerTagAssignment[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("customer_tags")
+}
+
+model CustomerTagAssignment {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  tagId      String   @map("tag_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz
+
+  // Relations
+  customer Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag      CustomerTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, tagId])
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([tagId])
+  @@map("customer_tag_assignments")
+}
+
+// ===========================================
+// DOMAIN 4: ORDERS
+// ===========================================
+
+model Order {
+  id             String      @id @default(uuid()) @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  customerId     String      @map("customer_id") @db.Uuid
+  externalId     String?     @map("external_id") @db.VarChar(255)
+  orderNumber    String?     @map("order_number") @db.VarChar(100)
+  status         OrderStatus @default(PENDING)
+  totalAmount    Decimal     @map("total_amount") @db.Decimal(12, 2)
+  currency       String      @default("INR") @db.VarChar(3) // ISO 4217
+  discountAmount Decimal?    @map("discount_amount") @db.Decimal(12, 2)
+  taxAmount      Decimal?    @map("tax_amount") @db.Decimal(12, 2)
+  channel        String?     @db.VarChar(50) // ONLINE, IN_STORE, APP
+  metadata       Json?       @default("{}")
+  orderedAt      DateTime    @map("ordered_at") @db.Timestamptz
+  deliveredAt    DateTime?   @map("delivered_at") @db.Timestamptz
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items               OrderItem[]
+  revenueAttributions RevenueAttribution[]
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, externalId])
+  @@index([status])
+  @@index([orderedAt])
+  @@index([tenantId, orderedAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  orderId     String  @map("order_id") @db.Uuid
+  productId   String  @map("product_id") @db.VarChar(255)
+  productName String  @map("product_name") @db.VarChar(255)
+  category    String? @db.VarChar(100)
+  quantity    Int
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  totalPrice  Decimal @map("total_price") @db.Decimal(12, 2)
+  metadata    Json?   @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, orderId])
+  @@index([productId])
+  @@index([category])
+  @@map("order_items")
+}
+
+// ===========================================
+// DOMAIN 5: EVENTS (Immutable Event Store)
+// ===========================================
+
+model Event {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  entityType     String    @map("entity_type") @db.VarChar(50) // CUSTOMER, ORDER, CAMPAIGN, DECISION, MESSAGE
+  entityId       String    @map("entity_id") @db.Uuid
+  eventType      String    @map("event_type") @db.VarChar(100) // CUSTOMER_CREATED, ORDER_COMPLETED, etc.
+  eventData      Json      @map("event_data")
+  actorType      ActorType @map("actor_type") @default(SYSTEM)
+  actorId        String?   @map("actor_id") @db.Uuid
+  correlationId  String?   @map("correlation_id") @db.Uuid
+  idempotencyKey String?   @unique @map("idempotency_key") @db.VarChar(255)
+  version        Int       @default(1) // Event schema version
+  occurredAt     DateTime  @map("occurred_at") @db.Timestamptz
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // NOTE: This table is APPEND-ONLY. No updates or deletes.
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([eventType])
+  @@index([tenantId, eventType])
+  @@index([correlationId])
+  @@index([occurredAt])
+  @@index([tenantId, occurredAt])
+  @@map("events")
+}
+
+// ===========================================
+// DOMAIN 6: CUSTOMER INTELLIGENCE
+// ===========================================
+
+model CustomerMetric {
+  id                     String    @id @default(uuid()) @db.Uuid
+  tenantId               String    @map("tenant_id") @db.Uuid
+  customerId             String    @map("customer_id") @db.Uuid
+  totalOrders            Int       @default(0) @map("total_orders")
+  totalRevenue           Decimal   @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  avgOrderValue          Decimal   @default(0) @map("avg_order_value") @db.Decimal(12, 2)
+  firstOrderAt           DateTime? @map("first_order_at") @db.Timestamptz
+  lastOrderAt            DateTime? @map("last_order_at") @db.Timestamptz
+  daysSinceLastOrder     Int?      @map("days_since_last_order")
+  orderFrequencyDays     Decimal?  @map("order_frequency_days") @db.Decimal(8, 2)
+  rfmRecencyScore        Int?      @map("rfm_recency_score") // 1-5
+  rfmFrequencyScore      Int?      @map("rfm_frequency_score") // 1-5
+  rfmMonetaryScore       Int?      @map("rfm_monetary_score") // 1-5
+  rfmCombinedScore       Int?      @map("rfm_combined_score")
+  engagementScore        Decimal?  @map("engagement_score") @db.Decimal(5, 2) // 0-100
+  churnRiskScore         Decimal?  @map("churn_risk_score") @db.Decimal(5, 4) // 0.0000-1.0000
+  lifetimeValue          Decimal?  @map("lifetime_value") @db.Decimal(12, 2)
+  predictedNextOrderAt   DateTime? @map("predicted_next_order_at") @db.Timestamptz
+  computedAt             DateTime  @map("computed_at") @db.Timestamptz
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId])
+  @@index([rfmCombinedScore])
+  @@index([churnRiskScore])
+  @@index([engagementScore])
+  @@index([computedAt])
+  @@map("customer_metrics")
+}
+
+model CustomerMetricHistory {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  customerId      String   @map("customer_id") @db.Uuid
+  metricsSnapshot Json     @map("metrics_snapshot")
+  computedAt      DateTime @map("computed_at") @db.Timestamptz
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+  @@index([computedAt])
+  @@map("customer_metrics_history")
+}
+
+// Extensible Feature Store (NEW)
+model CustomerFeature {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  customerId     String   @map("customer_id") @db.Uuid
+  featureName    String   @map("feature_name") @db.VarChar(100)
+  featureValue   Json     @map("feature_value") // Supports any value type
+  featureVersion Int      @default(1) @map("feature_version")
+  computedAt     DateTime @map("computed_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, featureName])
+  @@index([tenantId, customerId])
+  @@index([featureName])
+  @@index([computedAt])
+  @@map("customer_features")
+}
+
+// ===========================================
+// DOMAIN 7: PERSONAS
+// ===========================================
+
+model Persona {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  name        String        @db.VarChar(100)
+  description String?       @db.Text
+  criteria    Json?         // Rules defining the persona
+  color       String?       @db.VarChar(7) // Hex color
+  icon        String?       @db.VarChar(50)
+  priority    Int           @default(0) // Evaluation order
+  isSystem    Boolean       @default(false) @map("is_system")
+  status      PersonaStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamptz // Soft delete
+
+  // Relations
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerPersonas CustomerPersona[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([status])
+  @@map("personas")
+}
+
+model CustomerPersona {
+  id           String           @id @default(uuid()) @db.Uuid
+  tenantId     String           @map("tenant_id") @db.Uuid
+  customerId   String           @map("customer_id") @db.Uuid
+  personaId    String           @map("persona_id") @db.Uuid
+  confidence   Decimal          @default(0) @db.Decimal(5, 4) // 0-1
+  assignedAt   DateTime         @default(now()) @map("assigned_at") @db.Timestamptz
+  expiresAt    DateTime?        @map("expires_at") @db.Timestamptz
+  assignedBy   PersonaAssignedBy @default(SYSTEM) @map("assigned_by")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  persona  Persona  @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, personaId])
+  @@index([tenantId, personaId])
+  @@index([confidence])
+  @@index([assignedAt])
+  @@map("customer_personas")
+}
+
+// ===========================================
+// DOMAIN 8: SEGMENTS
+// ===========================================
+
+model Segment {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  name           String        @db.VarChar(255)
+  description    String?       @db.Text
+  type           SegmentType   @default(DYNAMIC)
+  rules          Json?         // Segment definition rules
+  customerCount  Int           @default(0) @map("customer_count")
+  status         SegmentStatus @default(ACTIVE)
+  lastComputedAt DateTime?     @map("last_computed_at") @db.Timestamptz
+  createdBy      String?       @map("created_by") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?     @map("deleted_at") @db.Timestamptz // Soft delete
+
+  // Relations
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator          User?              @relation("SegmentCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  segmentCustomers SegmentCustomer[]
+  segmentVersions  SegmentVersion[]
+  campaigns        Campaign[]
+  campaignAudiences CampaignAudience[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([type])
+  @@index([status])
+  @@map("segments")
+}
+
+model SegmentCustomer {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  segmentId  String    @map("segment_id") @db.Uuid
+  customerId String    @map("customer_id") @db.Uuid
+  addedAt    DateTime  @default(now()) @map("added_at") @db.Timestamptz
+  removedAt  DateTime? @map("removed_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  segment  Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, segmentId, customerId])
+  @@index([tenantId, customerId])
+  @@map("segment_customers")
+}
+
+model SegmentVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  segmentId     String   @map("segment_id") @db.Uuid
+  version       Int
+  rules         Json?
+  customerCount Int      @default(0) @map("customer_count")
+  changeReason  String?  @map("change_reason") @db.Text
+  changedBy     String?  @map("changed_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  segment Segment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  changer User?   @relation("SegmentVersionChanger", fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, segmentId, version])
+  @@index([tenantId, segmentId])
+  @@map("segment_versions")
+}
+
+// ===========================================
+// DOMAIN 9: BUSINESS GOALS (NEW)
+// ===========================================
+
+model BusinessGoal {
+  id          String     @id @default(uuid()) @db.Uuid
+  tenantId    String     @map("tenant_id") @db.Uuid
+  name        String     @db.VarChar(255)
+  description String?    @db.Text
+  goalType    GoalType   @map("goal_type") @default(CUSTOM)
+  status      GoalStatus @default(ACTIVE)
+  metadata    Json?      @default("{}")
+  createdBy   String?    @map("created_by") @db.Uuid
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime?  @map("deleted_at") @db.Timestamptz // Soft delete
+
+  // Relations
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator   User?      @relation("GoalCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  decisions Decision[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([goalType])
+  @@index([status])
+  @@map("business_goals")
+}
+
+// ===========================================
+// DOMAIN 10: DECISIONS (AI Decision Engine)
+// ===========================================
+
+model Decision {
+  id                      String         @id @default(uuid()) @db.Uuid
+  tenantId                String         @map("tenant_id") @db.Uuid
+  goalId                  String?        @map("goal_id") @db.Uuid
+  goal                    String         @db.Text // Raw goal text input
+  intent                  Json?          // Parsed intent from AI
+  status                  DecisionStatus @default(PENDING)
+  audience                Json?          // Who to target and why
+  channelRecommendation   Json?          @map("channel_recommendation")
+  offerRecommendation     Json?          @map("offer_recommendation")
+  timingRecommendation    Json?          @map("timing_recommendation")
+  contentRecommendation   Json?          @map("content_recommendation")
+  reasoning               String?        @db.Text
+  confidence              Decimal?       @db.Decimal(5, 4) // 0-1
+  modelUsed               String?        @map("model_used") @db.VarChar(100)
+  tokensUsed              Int?           @map("tokens_used")
+  cost                    Decimal?       @db.Decimal(8, 4)
+  approvedBy              String?        @map("approved_by") @db.Uuid
+  approvedAt              DateTime?      @map("approved_at") @db.Timestamptz
+  createdAt               DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  businessGoal     BusinessGoal?     @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  approver         User?             @relation("DecisionApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  decisionOutcomes DecisionOutcome[]
+  campaigns        Campaign[]
+  // Phase 2A relations
+  decisionRules        DecisionRule[]
+  decisionExplanations DecisionExplanation[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([tenantId, status])
+  @@index([createdAt])
+  @@map("decisions")
+}
+
+model DecisionOutcome {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  decisionId         String   @map("decision_id") @db.Uuid
+  campaignId         String?  @map("campaign_id") @db.Uuid
+  metrics            Json?    // Outcome metrics
+  effectivenessScore Decimal? @map("effectiveness_score") @db.Decimal(5, 4)
+  feedback           String?  @db.Text
+  feedbackBy         String?  @map("feedback_by") @db.Uuid
+  evaluatedAt        DateTime? @map("evaluated_at") @db.Timestamptz
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  decision     Decision  @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  campaign     Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  feedbackUser User?     @relation("OutcomeFeedbackBy", fields: [feedbackBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, decisionId])
+  @@index([tenantId, campaignId])
+  @@map("decision_outcomes")
+}
+
+// ===========================================
+// DOMAIN 11: CAMPAIGNS
+// ===========================================
+
+model Campaign {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  name         String         @db.VarChar(255)
+  description  String?        @db.Text
+  type         CampaignType   @default(ONE_TIME)
+  status       CampaignStatus @default(DRAFT)
+  channel      ChannelType    @default(EMAIL)
+  segmentId    String?        @map("segment_id") @db.Uuid
+  decisionId   String?        @map("decision_id") @db.Uuid
+  goal         String?        @db.Text
+  schedule     Json?          // Scheduling config
+  budget       Json?          // Budget constraints
+  metadata     Json?          @default("{}")
+  version      Int            @default(1)
+  scheduledAt  DateTime?      @map("scheduled_at") @db.Timestamptz
+  launchedAt   DateTime?      @map("launched_at") @db.Timestamptz
+  completedAt  DateTime?      @map("completed_at") @db.Timestamptz
+  createdBy    String?        @map("created_by") @db.Uuid
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime?      @map("deleted_at") @db.Timestamptz // Soft delete
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  segment           Segment?            @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  decision          Decision?           @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+  creator           User?               @relation("CampaignCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  campaignVersions  CampaignVersion[]
+  campaignMessages  CampaignMessage[]
+  campaignAudiences CampaignAudience[]
+  communicationLogs CommunicationLog[]
+  decisionOutcomes  DecisionOutcome[]
+  campaignAnalytics CampaignAnalytic[]
+  revenueAttributions RevenueAttribution[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([type])
+  @@index([channel])
+  @@index([tenantId, status])
+  @@index([segmentId])
+  @@index([decisionId])
+  @@index([launchedAt])
+  @@map("campaigns")
+}
+
+model CampaignVersion {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  campaignId   String   @map("campaign_id") @db.Uuid
+  version      Int
+  snapshot     Json     // Full campaign state at this version
+  changeReason String?  @map("change_reason") @db.Text
+  changedBy    String?  @map("changed_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  changer  User?    @relation("CampaignVersionChanger", fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, campaignId, version])
+  @@index([tenantId, campaignId])
+  @@map("campaign_versions")
+}
+
+model CampaignMessage {
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  campaignId    String      @map("campaign_id") @db.Uuid
+  variantName   String      @map("variant_name") @db.VarChar(100)
+  channel       ChannelType
+  subject       String?     @db.VarChar(500)
+  body          String      @db.Text
+  templateData  Json?       @map("template_data") // Personalization tokens
+  metadata      Json?       @default("{}")
+  isControl     Boolean     @default(false) @map("is_control")
+  weight        Int         @default(100) // Traffic split weight
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaign          Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  communicationLogs CommunicationLog[]
+
+  @@index([tenantId, campaignId])
+  @@index([channel])
+  @@map("campaign_messages")
+}
+
+// Frozen audience at launch time (NEW)
+model CampaignAudience {
+  id         String                 @id @default(uuid()) @db.Uuid
+  tenantId   String                 @map("tenant_id") @db.Uuid
+  campaignId String                 @map("campaign_id") @db.Uuid
+  customerId String                 @map("customer_id") @db.Uuid
+  segmentId  String?                @map("segment_id") @db.Uuid
+  status     CampaignAudienceStatus @default(INCLUDED)
+  createdAt  DateTime               @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  segment  Segment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+
+  // Immutable after creation — audience is frozen at launch
+  @@unique([tenantId, campaignId, customerId])
+  @@index([campaignId])
+  @@index([customerId])
+  @@index([tenantId])
+  @@map("campaign_audiences")
+}
+
+// ===========================================
+// DOMAIN 12: COMMUNICATIONS (Delivery Engine)
+// ===========================================
+
+model CommunicationLog {
+  id                String              @id @default(uuid()) @db.Uuid
+  tenantId          String              @map("tenant_id") @db.Uuid
+  campaignId        String?             @map("campaign_id") @db.Uuid
+  messageId         String?             @map("message_id") @db.Uuid
+  customerId        String              @map("customer_id") @db.Uuid
+  channel           ChannelType
+  status            CommunicationStatus @default(QUEUED)
+  provider          String?             @db.VarChar(50) // SendGrid, Twilio, etc.
+  providerMessageId String?             @map("provider_message_id") @db.VarChar(255)
+  errorCode         String?             @map("error_code") @db.VarChar(50)
+  errorMessage      String?             @map("error_message") @db.Text
+  attemptCount      Int                 @default(1) @map("attempt_count")
+  cost              Decimal?            @db.Decimal(8, 4)
+  sentAt            DateTime?           @map("sent_at") @db.Timestamptz
+  deliveredAt       DateTime?           @map("delivered_at") @db.Timestamptz
+  failedAt          DateTime?           @map("failed_at") @db.Timestamptz
+  metadata          Json?               @default("{}")
+  idempotencyKey    String              @unique @map("idempotency_key") @db.VarChar(255)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaign         Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  message          CampaignMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  customer         Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deliveryReceipts DeliveryReceipt[]
+
+  @@index([tenantId])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, customerId])
+  @@index([status])
+  @@index([channel])
+  @@index([sentAt])
+  @@map("communication_logs")
+}
+
+model DeliveryReceipt {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenantId           String            @map("tenant_id") @db.Uuid
+  communicationLogId String            @map("communication_log_id") @db.Uuid
+  eventType          DeliveryEventType @map("event_type")
+  rawPayload         Json?             @map("raw_payload")
+  metadata           Json?
+  occurredAt         DateTime          @map("occurred_at") @db.Timestamptz
+  processedAt        DateTime?         @map("processed_at") @db.Timestamptz
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  communicationLog CommunicationLog @relation(fields: [communicationLogId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, communicationLogId])
+  @@index([eventType])
+  @@index([occurredAt])
+  @@map("delivery_receipts")
+}
+
+// ===========================================
+// DOMAIN 13: ANALYTICS
+// ===========================================
+
+model CampaignAnalytic {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  campaignId         String   @map("campaign_id") @db.Uuid
+  totalSent          Int      @default(0) @map("total_sent")
+  totalDelivered     Int      @default(0) @map("total_delivered")
+  totalOpened        Int      @default(0) @map("total_opened")
+  totalClicked       Int      @default(0) @map("total_clicked")
+  totalConverted     Int      @default(0) @map("total_converted")
+  totalBounced       Int      @default(0) @map("total_bounced")
+  totalFailed        Int      @default(0) @map("total_failed")
+  totalUnsubscribed  Int      @default(0) @map("total_unsubscribed")
+  deliveryRate       Decimal? @map("delivery_rate") @db.Decimal(5, 4)
+  openRate           Decimal? @map("open_rate") @db.Decimal(5, 4)
+  clickRate          Decimal? @map("click_rate") @db.Decimal(5, 4)
+  conversionRate     Decimal? @map("conversion_rate") @db.Decimal(5, 4)
+  revenueGenerated   Decimal? @map("revenue_generated") @db.Decimal(12, 2)
+  costIncurred       Decimal? @map("cost_incurred") @db.Decimal(12, 2)
+  roi                Decimal? @db.Decimal(8, 4)
+  computedAt         DateTime @map("computed_at") @db.Timestamptz
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, campaignId])
+  @@index([computedAt])
+  @@map("campaign_analytics")
+}
+
+model RevenueAttribution {
+  id                String          @id @default(uuid()) @db.Uuid
+  tenantId          String          @map("tenant_id") @db.Uuid
+  campaignId        String          @map("campaign_id") @db.Uuid
+  orderId           String          @map("order_id") @db.Uuid
+  customerId        String          @map("customer_id") @db.Uuid
+  revenue           Decimal         @db.Decimal(12, 2)
+  attributionModel  AttributionModel @map("attribution_model") @default(LAST_TOUCH)
+  attributionWeight Decimal         @default(1) @map("attribution_weight") @db.Decimal(5, 4)
+  attributedAt      DateTime        @map("attributed_at") @db.Timestamptz
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, campaignId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, customerId])
+  @@map("revenue_attributions")
+}
+
+// ===========================================
+// DOMAIN 14: AUDIT
+// ===========================================
+
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  tenantId   String      @map("tenant_id") @db.Uuid
+  userId     String?     @map("user_id") @db.Uuid
+  action     AuditAction
+  entityType String      @map("entity_type") @db.VarChar(50)
+  entityId   String      @map("entity_id") @db.Uuid
+  oldValues  Json?       @map("old_values")
+  newValues  Json?       @map("new_values")
+  ipAddress  String?     @map("ip_address") @db.VarChar(45) // IPv4 or IPv6
+  userAgent  String?     @map("user_agent") @db.Text
+  metadata   Json?
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // NOTE: This table is APPEND-ONLY. No updates or deletes.
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}
+
+// ===========================================
+// DOMAIN 15: AI INTERACTIONS
+// ===========================================
+
+model AIInteraction {
+  id            String              @id @default(uuid()) @db.Uuid
+  tenantId      String              @map("tenant_id") @db.Uuid
+  agentType     AIAgentType         @map("agent_type")
+  model         String              @db.VarChar(100)
+  prompt        String              @db.Text
+  response      String?             @db.Text
+  tokensInput   Int?                @map("tokens_input")
+  tokensOutput  Int?                @map("tokens_output")
+  cost          Decimal?            @db.Decimal(8, 6)
+  latencyMs     Int?                @map("latency_ms")
+  status        AIInteractionStatus @default(SUCCESS)
+  errorMessage  String?             @map("error_message") @db.Text
+  context       Json?
+  correlationId String?             @map("correlation_id") @db.Uuid
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([agentType])
+  @@index([status])
+  @@index([correlationId])
+  @@index([createdAt])
+  @@map("ai_interactions")
+}
+
+// ===========================================
+// DOMAIN 16: LEARNING (NEW)
+// ===========================================
+
+model LearningExample {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  context   Json     // Context at the time of decision
+  decision  Json     // What was decided
+  outcome   Json?    // What happened (may be populated later)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("learning_examples")
+}
+
+// ===========================================
+// DOMAIN 17: RATE LIMITING (NEW)
+// ===========================================
+
+model RateLimitRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(100)
+  endpoint    String?  @db.VarChar(255) // Specific endpoint or * for all
+  maxRequests Int      @map("max_requests")
+  windowMs    Int      @map("window_ms") // Time window in milliseconds
+  scope       String   @default("TENANT") @db.VarChar(20) // TENANT, USER, IP
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("rate_limit_rules")
+}
+
+model ApiUsageLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  endpoint  String   @db.VarChar(255)
+  method    String   @db.VarChar(10) // GET, POST, PUT, DELETE, PATCH
+  statusCode Int     @map("status_code")
+  latencyMs  Int     @map("latency_ms")
+  ipAddress  String? @map("ip_address") @db.VarChar(45)
+  userAgent  String? @map("user_agent") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, endpoint])
+  @@index([tenantId, userId])
+  @@index([createdAt])
+  @@map("api_usage_logs")
+}
+
+// ===========================================
+// DOMAIN 18: CHANNEL SIMULATION (NEW)
+// ===========================================
+
+model ChannelProvider {
+  id          String                @id @default(uuid()) @db.Uuid
+  tenantId    String                @map("tenant_id") @db.Uuid
+  name        String                @db.VarChar(100) // SendGrid, Twilio, FCM, etc.
+  channel     ChannelType
+  config      Json?                 // Provider-specific configuration
+  priority    Int                   @default(0)
+  status      ChannelProviderStatus @default(ACTIVE)
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveryEvents DeliveryEvent[]
+
+  @@unique([tenantId, name, channel])
+  @@index([tenantId])
+  @@index([channel])
+  @@index([status])
+  @@map("channel_providers")
+}
+
+model DeliveryEvent {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenantId           String            @map("tenant_id") @db.Uuid
+  channelProviderId  String            @map("channel_provider_id") @db.Uuid
+  recipientId        String            @map("recipient_id") @db.Uuid // customer_id
+  campaignId         String?           @map("campaign_id") @db.Uuid
+  eventType          DeliveryEventType @map("event_type")
+  messageContent     String?           @map("message_content") @db.Text
+  simulatedDelay     Int?              @map("simulated_delay") // ms for simulation
+  metadata           Json?
+  occurredAt         DateTime          @map("occurred_at") @db.Timestamptz
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channelProvider ChannelProvider @relation(fields: [channelProviderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([channelProviderId])
+  @@index([recipientId])
+  @@index([eventType])
+  @@index([occurredAt])
+  @@map("delivery_events")
+}
+
+// ===========================================
+// DOMAIN 19: CUSTOMER IDENTITY (Phase 2A)
+// ===========================================
+
+model CustomerIdentity {
+  id            String       @id @default(uuid()) @db.Uuid
+  tenantId      String       @map("tenant_id") @db.Uuid
+  customerId    String       @map("customer_id") @db.Uuid
+  identityType  IdentityType @map("identity_type")
+  identityValue String       @map("identity_value") @db.VarChar(255)
+  isPrimary     Boolean      @default(false) @map("is_primary")
+  isVerified    Boolean      @default(false) @map("is_verified")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, identityType, identityValue])
+  @@index([tenantId, customerId])
+  @@index([identityType])
+  @@map("customer_identities")
+}
+
+model CustomerAddress {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  customerId  String      @map("customer_id") @db.Uuid
+  addressType AddressType @map("address_type") @default(HOME)
+  line1       String      @db.VarChar(255)
+  line2       String?     @db.VarChar(255)
+  city        String      @db.VarChar(100)
+  state       String?     @db.VarChar(100)
+  country     String      @db.VarChar(10) // ISO 3166-1 alpha-2
+  postalCode  String?     @map("postal_code") @db.VarChar(20)
+  isDefault   Boolean     @default(false) @map("is_default")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+  @@index([addressType])
+  @@map("customer_addresses")
+}
+
+model CustomerDevice {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String         @map("tenant_id") @db.Uuid
+  customerId  String         @map("customer_id") @db.Uuid
+  deviceType  String         @map("device_type") @db.VarChar(50) // MOBILE, TABLET, DESKTOP
+  deviceToken String         @map("device_token") @db.VarChar(500)
+  platform    DevicePlatform
+  lastSeenAt  DateTime?      @map("last_seen_at") @db.Timestamptz
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, deviceToken])
+  @@index([tenantId, customerId])
+  @@index([platform])
+  @@map("customer_devices")
+}
+
+// ===========================================
+// DOMAIN 20: CUSTOMER COMMUNICATION PREFERENCES (Phase 2A)
+// ===========================================
+
+model CustomerChannel {
+  id           String      @id @default(uuid()) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  customerId   String      @map("customer_id") @db.Uuid
+  channelType  ChannelType @map("channel_type")
+  channelValue String      @map("channel_value") @db.VarChar(255)
+  isVerified   Boolean     @default(false) @map("is_verified")
+  isActive     Boolean     @default(true) @map("is_active")
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, channelType])
+  @@index([tenantId, customerId])
+  @@index([channelType])
+  @@map("customer_channels")
+}
+
+model CustomerPreference {
+  id               String      @id @default(uuid()) @db.Uuid
+  tenantId         String      @map("tenant_id") @db.Uuid
+  customerId       String      @unique @map("customer_id") @db.Uuid
+
+  emailEnabled     Boolean     @default(true) @map("email_enabled")
+  smsEnabled       Boolean     @default(true) @map("sms_enabled")
+  whatsappEnabled  Boolean     @default(true) @map("whatsapp_enabled")
+  pushEnabled      Boolean     @default(true) @map("push_enabled")
+
+  preferredChannel ChannelType? @map("preferred_channel")
+  preferredLanguage String?    @map("preferred_language") @db.VarChar(10) // e.g., en, hi, ta
+
+  quietHoursStart  String?     @map("quiet_hours_start") @db.VarChar(5) // HH:MM
+  quietHoursEnd    String?     @map("quiet_hours_end") @db.VarChar(5) // HH:MM
+
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("customer_preferences")
+}
+
+model CustomerConsent {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  customerId  String        @map("customer_id") @db.Uuid
+  consentType ConsentType   @map("consent_type")
+  status      ConsentStatus @default(PENDING)
+  grantedAt   DateTime?     @map("granted_at") @db.Timestamptz
+  revokedAt   DateTime?     @map("revoked_at") @db.Timestamptz
+  source      String?       @db.VarChar(100) // WEB_FORM, API, IMPORT, MANUAL
+  proof       String?       @db.Text // Reference to consent proof (URL, record)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, consentType])
+  @@index([tenantId, customerId])
+  @@index([consentType])
+  @@index([status])
+  @@map("customer_consents")
+}
+
+// ===========================================
+// DOMAIN 21: PRODUCT CATALOG (Phase 2A)
+// ===========================================
+
+model ProductCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(255)
+  slug        String   @db.VarChar(255)
+  description String?  @db.Text
+  parentId    String?  @map("parent_id") @db.Uuid
+  level       Int      @default(0) // Hierarchy depth
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent   ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children ProductCategory[] @relation("CategoryHierarchy")
+  products Product[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([parentId])
+  @@map("product_categories")
+}
+
+model Product {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  categoryId  String?       @map("category_id") @db.Uuid
+  name        String        @db.VarChar(255)
+  sku         String?       @db.VarChar(100)
+  description String?       @db.Text
+  basePrice   Decimal       @map("base_price") @db.Decimal(12, 2)
+  currency    String        @default("INR") @db.VarChar(3)
+  imageUrl    String?       @map("image_url") @db.VarChar(500)
+  tags        Json?         @default("[]") // Product tags array
+  status      ProductStatus @default(ACTIVE)
+  metadata    Json?         @default("{}")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category        ProductCategory?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  attributeValues ProductAttributeValue[]
+  affinities      CustomerProductAffinity[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([tenantId, name])
+  @@map("products")
+}
+
+model ProductAttribute {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(100) // color, size, material, brand
+  dataType  String   @map("data_type") @db.VarChar(50) // STRING, NUMBER, BOOLEAN
+  isFilterable Boolean @default(false) @map("is_filterable")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  values ProductAttributeValue[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("product_attributes")
+}
+
+model ProductAttributeValue {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  attributeId String   @map("attribute_id") @db.Uuid
+  value       String   @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute ProductAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, productId, attributeId])
+  @@index([tenantId, productId])
+  @@index([attributeId])
+  @@map("product_attribute_values")
+}
+
+model CustomerProductAffinity {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  customerId      String   @map("customer_id") @db.Uuid
+  productId       String   @map("product_id") @db.Uuid
+  affinityScore   Decimal  @map("affinity_score") @db.Decimal(5, 4) // 0-1
+  purchaseCount   Int      @default(0) @map("purchase_count")
+  lastPurchasedAt DateTime? @map("last_purchased_at") @db.Timestamptz
+  computedAt      DateTime @map("computed_at") @db.Timestamptz
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, productId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, productId])
+  @@index([affinityScore])
+  @@map("customer_product_affinities")
+}
+
+// ===========================================
+// DOMAIN 22: FEATURE STORE HARDENING (Phase 2A)
+// ===========================================
+
+model FeatureDefinition {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  featureName String        @map("feature_name") @db.VarChar(100)
+  description String?       @db.Text
+  dataType    FeatureDataType @map("data_type") @default(NUMERIC)
+  owner       String?       @db.VarChar(100) // Team or system that owns this feature
+  status      FeatureStatus @default(ACTIVE)
+  metadata    Json?         @default("{}")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  versions FeatureVersion[]
+  computationRuns FeatureComputationRun[]
+
+  @@unique([tenantId, featureName])
+  @@index([tenantId])
+  @@index([status])
+  @@map("feature_definitions")
+}
+
+model FeatureVersion {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  featureDefinitionId   String   @map("feature_definition_id") @db.Uuid
+  version               Int
+  formula               String?  @db.Text // SQL or computation formula
+  description           String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  featureDefinition FeatureDefinition @relation(fields: [featureDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureDefinitionId, version])
+  @@index([tenantId, featureDefinitionId])
+  @@map("feature_versions")
+}
+
+model FeatureComputationRun {
+  id                  String            @id @default(uuid()) @db.Uuid
+  tenantId            String            @map("tenant_id") @db.Uuid
+  featureDefinitionId String            @map("feature_definition_id") @db.Uuid
+  version             Int
+  status              ComputationStatus @default(PENDING)
+  startedAt           DateTime?         @map("started_at") @db.Timestamptz
+  completedAt         DateTime?         @map("completed_at") @db.Timestamptz
+  recordsProcessed    Int?              @map("records_processed")
+  errorMessage        String?           @map("error_message") @db.Text
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  featureDefinition FeatureDefinition @relation(fields: [featureDefinitionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, featureDefinitionId])
+  @@index([status])
+  @@map("feature_computation_runs")
+}
+
+// ===========================================
+// DOMAIN 23: DECISION ENGINE FOUNDATION (Phase 2A)
+// ===========================================
+
+model DecisionTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  goalType    GoalType @map("goal_type")
+  template    Json     // Template structure (audience criteria, channel options, etc.)
+  isSystem    Boolean  @default(false) @map("is_system")
+  isActive    Boolean  @default(true) @map("is_active")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([goalType])
+  @@map("decision_templates")
+}
+
+model DecisionRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  decisionId  String   @map("decision_id") @db.Uuid
+  ruleName    String   @map("rule_name") @db.VarChar(255)
+  ruleType    String   @map("rule_type") @db.VarChar(50) // AUDIENCE, CHANNEL, OFFER, TIMING, EXCLUSION
+  conditions  Json     // Rule conditions
+  actions     Json     // Rule actions
+  priority    Int      @default(0)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, decisionId])
+  @@index([ruleType])
+  @@map("decision_rules")
+}
+
+model DecisionExplanation {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  decisionId  String   @map("decision_id") @db.Uuid
+  stepName    String   @map("step_name") @db.VarChar(100) // AUDIENCE_SELECTION, CHANNEL_CHOICE, OFFER_SELECTION, TIMING
+  explanation String   @db.Text
+  evidence    Json?    // Supporting data
+  confidence  Decimal? @db.Decimal(5, 4)
+  stepOrder   Int      @map("step_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, decisionId])
+  @@map("decision_explanations")
+}
+
+model DecisionExperiment {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  name           String   @db.VarChar(255)
+  description    String?  @db.Text
+  decisionIdA    String   @map("decision_id_a") @db.Uuid
+  decisionIdB    String   @map("decision_id_b") @db.Uuid
+  trafficSplit   Decimal  @default(0.5) @map("traffic_split") @db.Decimal(3, 2) // 0-1 fraction for variant A
+  status         String   @default("DRAFT") @db.VarChar(20) // DRAFT, RUNNING, COMPLETED, STOPPED
+  startedAt      DateTime? @map("started_at") @db.Timestamptz
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz
+  winnerDecisionId String? @map("winner_decision_id") @db.Uuid
+  results        Json?    // Experiment results summary
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("decision_experiments")
+}
+
+// ===========================================
+// DOMAIN 24: OFFERS (Phase 2A)
+// ===========================================
+
+model OfferTemplate {
+  id          String     @id @default(uuid()) @db.Uuid
+  tenantId    String     @map("tenant_id") @db.Uuid
+  name        String     @db.VarChar(255)
+  description String?    @db.Text
+  offerType   OfferType  @map("offer_type")
+  template    Json       // Template structure (value ranges, conditions)
+  isActive    Boolean    @default(true) @map("is_active")
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offers Offer[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([offerType])
+  @@map("offer_templates")
+}
+
+model Offer {
+  id             String      @id @default(uuid()) @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  templateId     String?     @map("template_id") @db.Uuid
+  name           String      @db.VarChar(255)
+  description    String?     @db.Text
+  offerType      OfferType   @map("offer_type")
+  value          Decimal     @db.Decimal(12, 2) // Discount amount, percentage, points, etc.
+  currency       String?     @db.VarChar(3)
+  conditions     Json?       // Eligibility conditions
+  maxRedemptions Int?        @map("max_redemptions")
+  currentRedemptions Int     @default(0) @map("current_redemptions")
+  status         OfferStatus @default(DRAFT)
+  validFrom      DateTime?   @map("valid_from") @db.Timestamptz
+  validUntil     DateTime?   @map("valid_until") @db.Timestamptz
+  metadata       Json?       @default("{}")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template    OfferTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  assignments OfferAssignment[]
+  performances OfferPerformance[]
+  versions    OfferVersion[]
+
+  @@index([tenantId])
+  @@index([offerType])
+  @@index([status])
+  @@index([validFrom, validUntil])
+  @@map("offers")
+}
+
+model OfferAssignment {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  offerId     String    @map("offer_id") @db.Uuid
+  customerId  String    @map("customer_id") @db.Uuid
+  decisionId  String?   @map("decision_id") @db.Uuid
+  campaignId  String?   @map("campaign_id") @db.Uuid
+  assignedAt  DateTime  @default(now()) @map("assigned_at") @db.Timestamptz
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz
+  redeemedAt  DateTime? @map("redeemed_at") @db.Timestamptz
+  status      String    @default("ASSIGNED") @db.VarChar(20) // ASSIGNED, REDEEMED, EXPIRED, CANCELLED
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offer    Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+  @@index([tenantId, offerId])
+  @@index([status])
+  @@map("offer_assignments")
+}
+
+model OfferPerformance {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  offerId          String   @map("offer_id") @db.Uuid
+  totalAssigned    Int      @default(0) @map("total_assigned")
+  totalRedeemed    Int      @default(0) @map("total_redeemed")
+  totalRevenue     Decimal? @map("total_revenue") @db.Decimal(12, 2)
+  redemptionRate   Decimal? @map("redemption_rate") @db.Decimal(5, 4)
+  avgOrderValue    Decimal? @map("avg_order_value") @db.Decimal(12, 2)
+  roi              Decimal? @db.Decimal(8, 4)
+  computedAt       DateTime @map("computed_at") @db.Timestamptz
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offer  Offer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, offerId])
+  @@index([computedAt])
+  @@map("offer_performances")
+}
+
+// ===========================================
+// DOMAIN 25: WORKFLOW ENGINE (Phase 2A)
+// ===========================================
+
+model Workflow {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String         @map("tenant_id") @db.Uuid
+  name        String         @db.VarChar(255)
+  description String?        @db.Text
+  triggerType String         @map("trigger_type") @db.VarChar(50) // MANUAL, SCHEDULED, EVENT, API
+  triggerConfig Json?        @map("trigger_config")
+  status      WorkflowStatus @default(DRAFT)
+  version     Int            @default(1)
+  metadata    Json?          @default("{}")
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  steps      WorkflowStep[]
+  executions WorkflowExecution[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([status])
+  @@map("workflows")
+}
+
+model WorkflowStep {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  workflowId  String           @map("workflow_id") @db.Uuid
+  stepName    String           @map("step_name") @db.VarChar(255)
+  stepType    WorkflowStepType @map("step_type")
+  config      Json             // Step-specific configuration
+  nextStepId  String?          @map("next_step_id") @db.Uuid
+  onFailStepId String?         @map("on_fail_step_id") @db.Uuid
+  stepOrder   Int              @map("step_order")
+  timeoutMs   Int?             @map("timeout_ms")
+  retryCount  Int              @default(0) @map("retry_count")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  executionSteps WorkflowExecutionStep[]
+
+  @@index([tenantId, workflowId])
+  @@index([stepType])
+  @@map("workflow_steps")
+}
+
+model WorkflowExecution {
+  id          String                  @id @default(uuid()) @db.Uuid
+  tenantId    String                  @map("tenant_id") @db.Uuid
+  workflowId  String                  @map("workflow_id") @db.Uuid
+  status      WorkflowExecutionStatus @default(PENDING)
+  triggeredBy String?                 @map("triggered_by") @db.Uuid
+  input       Json?                   // Execution input data
+  output      Json?                   // Execution output data
+  startedAt   DateTime?               @map("started_at") @db.Timestamptz
+  completedAt DateTime?               @map("completed_at") @db.Timestamptz
+  errorMessage String?                @map("error_message") @db.Text
+  createdAt   DateTime                @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflow Workflow                @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  steps    WorkflowExecutionStep[]
+
+  @@index([tenantId, workflowId])
+  @@index([status])
+  @@index([startedAt])
+  @@map("workflow_executions")
+}
+
+model WorkflowExecutionStep {
+  id            String                  @id @default(uuid()) @db.Uuid
+  tenantId      String                  @map("tenant_id") @db.Uuid
+  executionId   String                  @map("execution_id") @db.Uuid
+  stepId        String                  @map("step_id") @db.Uuid
+  status        WorkflowExecutionStatus @default(PENDING)
+  input         Json?
+  output        Json?
+  startedAt     DateTime?               @map("started_at") @db.Timestamptz
+  completedAt   DateTime?               @map("completed_at") @db.Timestamptz
+  errorMessage  String?                 @map("error_message") @db.Text
+  attemptNumber Int                     @default(1) @map("attempt_number")
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  execution WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  step      WorkflowStep      @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, executionId])
+  @@index([stepId])
+  @@index([status])
+  @@map("workflow_execution_steps")
+}
+
+// ===========================================
+// DOMAIN 26: AI MEMORY (Phase 2A)
+// ===========================================
+
+model AgentMemory {
+  id         String     @id @default(uuid()) @db.Uuid
+  tenantId   String     @map("tenant_id") @db.Uuid
+  agentType  AIAgentType @map("agent_type")
+  memoryType MemoryType @map("memory_type")
+  key        String     @db.VarChar(255)
+  value      Json       // Memory content
+  confidence Decimal?   @db.Decimal(5, 4)
+  expiresAt  DateTime?  @map("expires_at") @db.Timestamptz
+  accessCount Int       @default(0) @map("access_count")
+  lastAccessedAt DateTime? @map("last_accessed_at") @db.Timestamptz
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, agentType, key])
+  @@index([tenantId])
+  @@index([agentType])
+  @@index([memoryType])
+  @@map("agent_memories")
+}
+
+model AgentObservation {
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  agentType     AIAgentType @map("agent_type")
+  observationType String   @map("observation_type") @db.VarChar(100) // TREND, ANOMALY, INSIGHT, PATTERN
+  subject       String      @db.VarChar(255) // What was observed about
+  observation   String      @db.Text // The observation itself
+  evidence      Json?       // Supporting data
+  confidence    Decimal?    @db.Decimal(5, 4)
+  actionable    Boolean     @default(false)
+  actedUpon     Boolean     @default(false) @map("acted_upon")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([agentType])
+  @@index([observationType])
+  @@index([actionable])
+  @@map("agent_observations")
+}
+
+model AgentFeedback {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id") @db.Uuid
+  agentType       AIAgentType       @map("agent_type")
+  interactionId   String?           @map("interaction_id") @db.Uuid
+  decisionId      String?           @map("decision_id") @db.Uuid
+  sentiment       FeedbackSentiment
+  rating          Int?              // 1-5 scale
+  comment         String?           @db.Text
+  feedbackBy      String?           @map("feedback_by") @db.Uuid
+  feedbackContext Json?             @map("feedback_context")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([agentType])
+  @@index([sentiment])
+  @@index([interactionId])
+  @@map("agent_feedbacks")
+}
+
+// ===========================================
+// DOMAIN 27: ANALYTICS FOUNDATION (Phase 2A)
+// ===========================================
+
+model MetricDefinition {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  name           String   @db.VarChar(255)
+  description    String?  @db.Text
+  formula        String?  @db.Text // SQL or computation formula
+  aggregation    String   @default("SUM") @db.VarChar(20) // SUM, AVG, COUNT, MIN, MAX, CUSTOM
+  unit           String?  @db.VarChar(50) // %, INR, count, days
+  category       String?  @db.VarChar(100) // REVENUE, ENGAGEMENT, RETENTION, CAMPAIGN, CUSTOMER
+  isSystem       Boolean  @default(false) @map("is_system")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  snapshots MetricSnapshot[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([category])
+  @@map("metric_definitions")
+}
+
+model MetricSnapshot {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  metricDefinitionId String   @map("metric_definition_id") @db.Uuid
+  value              Decimal  @db.Decimal(16, 4)
+  previousValue      Decimal? @map("previous_value") @db.Decimal(16, 4)
+  changePercent      Decimal? @map("change_percent") @db.Decimal(8, 4)
+  dimensions         Json?    // Slice dimensions (segment, channel, campaign)
+  periodStart        DateTime @map("period_start") @db.Timestamptz
+  periodEnd          DateTime @map("period_end") @db.Timestamptz
+  computedAt         DateTime @map("computed_at") @db.Timestamptz
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metricDefinition MetricDefinition @relation(fields: [metricDefinitionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, metricDefinitionId])
+  @@index([periodStart, periodEnd])
+  @@index([computedAt])
+  @@map("metric_snapshots")
+}
+
+model DashboardWidget {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(255)
+  widgetType  String   @map("widget_type") @db.VarChar(50) // CHART, TABLE, KPI, MAP, FUNNEL
+  config      Json     // Widget configuration (data source, visualization options)
+  position    Json?    // Grid position { x, y, w, h }
+  dashboardId String?  @map("dashboard_id") @db.VarChar(100) // Group widgets into dashboards
+  isVisible   Boolean  @default(true) @map("is_visible")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([dashboardId])
+  @@index([widgetType])
+  @@map("dashboard_widgets")
+}
+
+// ===========================================
+// DOMAIN 28: PRODUCT INTELLIGENCE (Phase 3.5)
+// ===========================================
+
+model CustomerCategoryAffinity {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  customerId      String   @map("customer_id") @db.Uuid
+  category        String   @db.VarChar(100)
+  affinityScore   Decimal  @map("affinity_score") @db.Decimal(5, 4) // 0-1
+  totalSpend      Decimal  @map("total_spend") @db.Decimal(12, 2)
+  purchaseCount   Int      @default(0) @map("purchase_count")
+  avgItemValue    Decimal? @map("avg_item_value") @db.Decimal(12, 2)
+  lastPurchasedAt DateTime? @map("last_purchased_at") @db.Timestamptz
+  isPreferred     Boolean  @default(false) @map("is_preferred")
+  computedAt      DateTime @map("computed_at") @db.Timestamptz
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, category])
+  @@index([tenantId, customerId])
+  @@index([affinityScore])
+  @@index([category])
+  @@map("customer_category_affinities")
+}
+
+// ===========================================
+// DOMAIN 29: OFFER VERSIONING (Phase 3.5)
+// ===========================================
+
+model OfferVersion {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  offerId       String    @map("offer_id") @db.Uuid
+  version       Int       @default(1)
+  offerType     OfferType @map("offer_type")
+  value         Decimal   @db.Decimal(12, 2)
+  conditions    Json?
+  changelog     String?   @db.Text
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offer  Offer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, offerId, version])
+  @@index([tenantId, offerId])
+  @@map("offer_versions")
+}
+
+// ===========================================
+// DOMAIN 30: AI CHAT PERSISTENCE
+// ===========================================
+
+model Conversation {
+  id        String        @id @default(uuid()) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  userId    String        @map("user_id") @db.Uuid
+  title     String        @db.VarChar(255)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("conversations")
+}
+
+model ChatMessage {
+  id             String       @id @default(uuid()) @db.Uuid
+  conversationId String       @map("conversation_id") @db.Uuid
+  role           String       @db.VarChar(50) // 'user' | 'assistant'
+  content        String       @db.Text
+  steps          Json?        // Stores intermediate tool steps: AgentStep[]
+  timestamp      DateTime     @default(now()) @db.Timestamptz
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("chat_messages")
+}
