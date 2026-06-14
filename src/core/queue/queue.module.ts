@@ -19,26 +19,50 @@ export const QUEUE_NAMES = {
   imports: [
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>('BULL_REDIS_HOST', 'localhost'),
-          port: configService.get<number>('BULL_REDIS_PORT', 6379),
-        },
-        defaultJobOptions: {
-          attempts: configService.get<number>('BULL_DEFAULT_ATTEMPTS', 3),
-          backoff: {
-            type: 'exponential',
-            delay: configService.get<number>('BULL_BACKOFF_DELAY', 1000),
+      useFactory: (configService: ConfigService) => {
+        const url = configService.get<string>('REDIS_URL');
+        let connection: any;
+
+        if (url) {
+          try {
+            const parsed = new URL(url);
+            connection = {
+              host: parsed.hostname,
+              port: parseInt(parsed.port || '6379', 10),
+              password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+              username: parsed.username ? decodeURIComponent(parsed.username) : undefined,
+              tls: url.startsWith('rediss://') ? {} : undefined,
+            };
+          } catch (e) {
+            // fallback
+          }
+        }
+
+        if (!connection) {
+          connection = {
+            host: configService.get<string>('BULL_REDIS_HOST', 'localhost'),
+            port: configService.get<number>('BULL_REDIS_PORT', 6379),
+          };
+        }
+
+        return {
+          connection,
+          defaultJobOptions: {
+            attempts: configService.get<number>('BULL_DEFAULT_ATTEMPTS', 3),
+            backoff: {
+              type: 'exponential',
+              delay: configService.get<number>('BULL_BACKOFF_DELAY', 1000),
+            },
+            removeOnComplete: {
+              age: 24 * 3600, // Keep completed jobs for 24 hours
+              count: 1000, // Keep last 1000 completed jobs
+            },
+            removeOnFail: {
+              age: 7 * 24 * 3600, // Keep failed jobs for 7 days
+            },
           },
-          removeOnComplete: {
-            age: 24 * 3600, // Keep completed jobs for 24 hours
-            count: 1000, // Keep last 1000 completed jobs
-          },
-          removeOnFail: {
-            age: 7 * 24 * 3600, // Keep failed jobs for 7 days
-          },
-        },
-      }),
+        };
+      },
       inject: [ConfigService],
     }),
 

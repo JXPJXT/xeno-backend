@@ -14,11 +14,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     @Inject('REDIS_OPTIONS')
-    private readonly options: { host: string; port: number },
+    private readonly options: {
+      host: string;
+      port: number;
+      password?: string;
+      username?: string;
+      tls?: any;
+    },
   ) {
     this.client = new Redis({
       host: this.options.host,
       port: this.options.port,
+      password: this.options.password,
+      username: this.options.username,
+      tls: this.options.tls,
       maxRetriesPerRequest: null, // Required by BullMQ
       enableReadyCheck: true,
       retryStrategy: (times: number) => {
