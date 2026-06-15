@@ -267,8 +267,8 @@ async function main() {
   console.log('👥 Creating customers...');
 
   const customers = await Promise.all(
-    Array.from({ length: 50 }, (_, i) => {
-      const firstName = FIRST_NAMES[i];
+    Array.from({ length: 150 }, (_, i) => {
+      const firstName = FIRST_NAMES[i % FIRST_NAMES.length];
       const lastName = randomChoice(LAST_NAMES);
       const cityIdx = randomInt(0, CITIES.length - 1);
 
@@ -286,7 +286,7 @@ async function main() {
           city: CITIES[cityIdx],
           state: STATES[cityIdx],
           country: 'IN',
-          status: i < 45 ? CustomerStatus.ACTIVE : CustomerStatus.INACTIVE,
+          status: i < 135 ? CustomerStatus.ACTIVE : CustomerStatus.INACTIVE,
           acquisitionSource: randomChoice(ACQUISITION_SOURCES),
           acquisitionDate: randomDate(new Date('2023-01-01'), new Date('2024-12-31')),
           firstSeenAt: randomDate(new Date('2023-01-01'), new Date('2024-06-30')),
@@ -328,7 +328,7 @@ async function main() {
   console.log('🛒 Creating orders...');
 
   const orders: any[] = [];
-  const orderCount = randomInt(120, 180);
+  const orderCount = randomInt(350, 450);
 
   for (let i = 0; i < orderCount; i++) {
     const customer = randomChoice(customers);
@@ -479,7 +479,7 @@ async function main() {
   console.log('🧠 Creating customer features...');
 
   let featureCount = 0;
-  for (const customer of customers.slice(0, 30)) {
+  for (const customer of customers.slice(0, 90)) {
     const features = [
       { name: 'discount_affinity', value: randomDecimal(0, 1, 4) },
       { name: 'weekend_buyer_score', value: randomDecimal(0, 1, 4) },
@@ -674,7 +674,7 @@ async function main() {
     },
   ];
 
-  const segmentCounts = [15, 15, 10, 8, 15, 15];
+  const segmentCounts = [45, 45, 30, 20, 40, 40];
   const segments = await Promise.all(
     segmentsData.map((s, idx) =>
       prisma.segment.create({
@@ -700,12 +700,12 @@ async function main() {
   // ==============================
   console.log('👥 Seeding segment customers...');
   const segmentSlices = [
-    customers.slice(0, 15),  // High-Value Active
-    customers.slice(15, 30), // Dormant Customers
-    customers.slice(30, 40), // High Churn Risk
-    customers.slice(40, 48), // First-Time Buyers
-    customers.slice(5, 20),  // Premium Discount Hunters
-    customers.slice(20, 35), // Dormant High-Value
+    customers.slice(0, 45),  // High-Value Active
+    customers.slice(45, 90), // Dormant Customers
+    customers.slice(90, 120), // High Churn Risk
+    customers.slice(120, 140), // First-Time Buyers
+    customers.slice(10, 50),  // Premium Discount Hunters
+    customers.slice(50, 90), // Dormant High-Value
   ];
 
   for (let idx = 0; idx < segments.length; idx++) {
@@ -860,15 +860,14 @@ async function main() {
   const compMessage = campaignMessages[0];
   const compSegmentCustomers = segmentSlices[1]; // slice(15, 30) -> 15 customers
 
-  // Distribution of statuses: 15 customers total
-  // 2 SENT, 3 DELIVERED, 4 OPENED, 4 CLICKED, 2 FAILED
-  const statusDistribution = [
-    ...Array(2).fill(CommunicationStatus.SENT),
-    ...Array(3).fill(CommunicationStatus.DELIVERED),
-    ...Array(4).fill(CommunicationStatus.OPENED),
-    ...Array(4).fill(CommunicationStatus.CLICKED),
-    ...Array(2).fill(CommunicationStatus.FAILED),
-  ];
+  // Distribution of statuses: dynamically scaled
+  const statusDistribution = Array.from({ length: compSegmentCustomers.length }, (_, idx) => {
+    if (idx < compSegmentCustomers.length * 0.15) return CommunicationStatus.SENT;
+    if (idx < compSegmentCustomers.length * 0.35) return CommunicationStatus.DELIVERED;
+    if (idx < compSegmentCustomers.length * 0.65) return CommunicationStatus.OPENED;
+    if (idx < compSegmentCustomers.length * 0.90) return CommunicationStatus.CLICKED;
+    return CommunicationStatus.FAILED;
+  });
 
   for (let idx = 0; idx < compSegmentCustomers.length; idx++) {
     const customer = compSegmentCustomers[idx];
@@ -985,13 +984,13 @@ async function main() {
   const activeMessage = campaignMessages[2];
   const activeSegmentCustomers = segmentSlices[3]; // slice(40, 48) -> 8 customers
 
-  // Distribution: 2 QUEUED, 3 SENT, 2 DELIVERED, 1 OPENED
-  const activeStatusDistribution = [
-    CommunicationStatus.QUEUED, CommunicationStatus.QUEUED,
-    CommunicationStatus.SENT, CommunicationStatus.SENT, CommunicationStatus.SENT,
-    CommunicationStatus.DELIVERED, CommunicationStatus.DELIVERED,
-    CommunicationStatus.OPENED
-  ];
+  // Distribution: dynamically scaled
+  const activeStatusDistribution = Array.from({ length: activeSegmentCustomers.length }, (_, idx) => {
+    if (idx < activeSegmentCustomers.length * 0.25) return CommunicationStatus.QUEUED;
+    if (idx < activeSegmentCustomers.length * 0.60) return CommunicationStatus.SENT;
+    if (idx < activeSegmentCustomers.length * 0.85) return CommunicationStatus.DELIVERED;
+    return CommunicationStatus.OPENED;
+  });
 
   for (let idx = 0; idx < activeSegmentCustomers.length; idx++) {
     const customer = activeSegmentCustomers[idx];
@@ -1103,7 +1102,7 @@ async function main() {
   ];
 
   let eventCount = 0;
-  for (const customer of customers.slice(0, 20)) {
+  for (const customer of customers.slice(0, 60)) {
     await prisma.event.create({
       data: {
         id: uuidv4(),
@@ -1128,7 +1127,7 @@ async function main() {
 
   let identityCount = 0;
   let addressCount = 0;
-  for (const customer of customers.slice(0, 30)) {
+  for (const customer of customers.slice(0, 90)) {
     // Email identity
     if (customer.email) {
       await prisma.customerIdentity.create({
@@ -1183,7 +1182,7 @@ async function main() {
 
   let prefCount = 0;
   let consentCount = 0;
-  for (const customer of customers.slice(0, 20)) {
+  for (const customer of customers.slice(0, 60)) {
     // Preferences
     await prisma.customerPreference.create({
       data: {
