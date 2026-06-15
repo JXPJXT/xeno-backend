@@ -73,6 +73,13 @@ export class CampaignService {
     });
   }
 
+  async findSegments(tenantId: string) {
+    return this.prisma.segment.findMany({
+      where: { tenantId, deletedAt: null },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   // ──────────────────────────────────────
   // CREATE
   // ──────────────────────────────────────

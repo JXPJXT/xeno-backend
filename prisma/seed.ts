@@ -1,4 +1,4 @@
-import { PrismaClient, TenantStatus, TenantPlan, UserRole, UserStatus, CustomerGender, CustomerStatus, OrderStatus, PersonaStatus, SegmentType, SegmentStatus, GoalType, GoalStatus, CampaignType, CampaignStatus, ChannelType, ChannelProviderStatus } from '@prisma/client';
+import { PrismaClient, TenantStatus, TenantPlan, UserRole, UserStatus, CustomerGender, CustomerStatus, OrderStatus, PersonaStatus, SegmentType, SegmentStatus, GoalType, GoalStatus, CampaignType, CampaignStatus, ChannelType, ChannelProviderStatus, CampaignAudienceStatus, CommunicationStatus, DeliveryEventType } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcrypt';
 
@@ -674,8 +674,9 @@ async function main() {
     },
   ];
 
+  const segmentCounts = [15, 15, 10, 8, 15, 15];
   const segments = await Promise.all(
-    segmentsData.map((s) =>
+    segmentsData.map((s, idx) =>
       prisma.segment.create({
         data: {
           id: uuidv4(),
@@ -684,7 +685,7 @@ async function main() {
           description: s.description,
           type: s.type,
           rules: s.rules,
-          customerCount: randomInt(5, 20),
+          customerCount: segmentCounts[idx],
           status: SegmentStatus.ACTIVE,
           lastComputedAt: now,
           createdBy: users[1].id,
@@ -693,6 +694,37 @@ async function main() {
     ),
   );
   console.log(`  ✅ Created ${segments.length} segments`);
+
+  // ==============================
+  // 9B. SEGMENT CUSTOMERS
+  // ==============================
+  console.log('👥 Seeding segment customers...');
+  const segmentSlices = [
+    customers.slice(0, 15),  // High-Value Active
+    customers.slice(15, 30), // Dormant Customers
+    customers.slice(30, 40), // High Churn Risk
+    customers.slice(40, 48), // First-Time Buyers
+    customers.slice(5, 20),  // Premium Discount Hunters
+    customers.slice(20, 35), // Dormant High-Value
+  ];
+
+  for (let idx = 0; idx < segments.length; idx++) {
+    const segment = segments[idx];
+    const segmentCustomersList = segmentSlices[idx];
+    await Promise.all(
+      segmentCustomersList.map((customer) =>
+        prisma.segmentCustomer.create({
+          data: {
+            id: uuidv4(),
+            tenantId: tenant.id,
+            segmentId: segment.id,
+            customerId: customer.id,
+          },
+        })
+      )
+    );
+  }
+  console.log('  ✅ Created segment customers membership');
 
   // ==============================
   // 10. BUSINESS GOALS
@@ -789,6 +821,246 @@ async function main() {
     ),
   );
   console.log(`  ✅ Created ${campaigns.length} campaigns`);
+
+  // ==============================
+  // 11B. CAMPAIGN MESSAGES & PERFORMANCE
+  // ==============================
+  console.log('📣 Seeding campaign messages and performance data...');
+
+  // Create Campaign Messages
+  const campaignMessages = await Promise.all(
+    campaigns.map((campaign, idx) => {
+      const cData = campaignsData[idx];
+      let subject = null;
+      let body = '';
+      if (cData.channel === ChannelType.EMAIL) {
+        subject = `Exclusive Offer for You!`;
+        body = `Hi {{firstName}}, we miss you! Use code WINBACK20 for 20% off your next order.`;
+      } else if (cData.channel === ChannelType.WHATSAPP) {
+        body = `Hi {{firstName}}, as one of our top customers, here is a special gift for you: VIP10.`;
+      } else {
+        body = `Hi {{firstName}}, welcome to StyleHub!`;
+      }
+      return prisma.campaignMessage.create({
+        data: {
+          id: uuidv4(),
+          tenantId: tenant.id,
+          campaignId: campaign.id,
+          variantName: 'default',
+          channel: campaign.channel,
+          subject,
+          body,
+        }
+      });
+    })
+  );
+
+  // Completed Campaign Performance (index 0)
+  const compCampaign = campaigns[0];
+  const compMessage = campaignMessages[0];
+  const compSegmentCustomers = segmentSlices[1]; // slice(15, 30) -> 15 customers
+
+  // Distribution of statuses: 15 customers total
+  // 2 SENT, 3 DELIVERED, 4 OPENED, 4 CLICKED, 2 FAILED
+  const statusDistribution = [
+    ...Array(2).fill(CommunicationStatus.SENT),
+    ...Array(3).fill(CommunicationStatus.DELIVERED),
+    ...Array(4).fill(CommunicationStatus.OPENED),
+    ...Array(4).fill(CommunicationStatus.CLICKED),
+    ...Array(2).fill(CommunicationStatus.FAILED),
+  ];
+
+  for (let idx = 0; idx < compSegmentCustomers.length; idx++) {
+    const customer = compSegmentCustomers[idx];
+    const status = statusDistribution[idx];
+    const logId = uuidv4();
+    const sentAt = compCampaign.launchedAt || new Date();
+    const deliveredAt = (status === CommunicationStatus.DELIVERED || status === CommunicationStatus.OPENED || status === CommunicationStatus.CLICKED)
+      ? new Date(sentAt.getTime() + randomInt(1, 10) * 1000)
+      : null;
+    const failedAt = (status === CommunicationStatus.FAILED) ? new Date(sentAt.getTime() + 1000) : null;
+
+    // 1. Audience
+    await prisma.campaignAudience.create({
+      data: {
+        id: uuidv4(),
+        tenantId: tenant.id,
+        campaignId: compCampaign.id,
+        customerId: customer.id,
+        segmentId: compCampaign.segmentId,
+        status: CampaignAudienceStatus.INCLUDED,
+      }
+    });
+
+    // 2. Comm Log
+    const log = await prisma.communicationLog.create({
+      data: {
+        id: logId,
+        tenantId: tenant.id,
+        campaignId: compCampaign.id,
+        messageId: compMessage.id,
+        customerId: customer.id,
+        channel: compCampaign.channel,
+        status,
+        provider: 'SendGrid',
+        providerMessageId: `msg-${uuidv4().substring(0, 8)}`,
+        sentAt,
+        deliveredAt,
+        failedAt,
+        idempotencyKey: `${compCampaign.id}-${customer.id}-${compMessage.id}`,
+      }
+    });
+
+    // 3. Delivery receipts
+    if (deliveredAt) {
+      // Delivered receipt
+      await prisma.deliveryReceipt.create({
+        data: {
+          id: uuidv4(),
+          tenantId: tenant.id,
+          communicationLogId: logId,
+          eventType: DeliveryEventType.DELIVERED,
+          occurredAt: deliveredAt,
+          processedAt: new Date(deliveredAt.getTime() + 500),
+        }
+      });
+
+      if (status === CommunicationStatus.OPENED || status === CommunicationStatus.CLICKED) {
+        const openedAt = new Date(deliveredAt.getTime() + randomInt(5, 60) * 1000);
+        await prisma.deliveryReceipt.create({
+          data: {
+            id: uuidv4(),
+            tenantId: tenant.id,
+            communicationLogId: logId,
+            eventType: DeliveryEventType.OPENED,
+            occurredAt: openedAt,
+            processedAt: new Date(openedAt.getTime() + 500),
+          }
+        });
+
+        if (status === CommunicationStatus.CLICKED) {
+          const clickedAt = new Date(openedAt.getTime() + randomInt(5, 60) * 1000);
+          await prisma.deliveryReceipt.create({
+            data: {
+              id: uuidv4(),
+              tenantId: tenant.id,
+              communicationLogId: logId,
+              eventType: DeliveryEventType.CLICKED,
+              occurredAt: clickedAt,
+              processedAt: new Date(clickedAt.getTime() + 500),
+            }
+          });
+        }
+      }
+    }
+  }
+
+  // Seeding conversions/attributions for Completed Campaign (let's convert 2 of the CLICKED customers)
+  const clickedCustomers = compSegmentCustomers.slice(9, 13); // index 9 to 12 are CLICKED
+  let attributionCount = 0;
+  for (const customer of clickedCustomers.slice(0, 2)) {
+    // Find customer's orders
+    const customerOrders = orders.filter(o => o.customerId === customer.id);
+    if (customerOrders.length > 0) {
+      const order = customerOrders[0];
+      await prisma.revenueAttribution.create({
+        data: {
+          id: uuidv4(),
+          tenantId: tenant.id,
+          campaignId: compCampaign.id,
+          orderId: order.id,
+          customerId: customer.id,
+          revenue: order.totalAmount,
+          attributionWeight: 1.0,
+          attributedAt: new Date(compCampaign.launchedAt!.getTime() + 2 * 3600000), // 2 hours later
+        }
+      });
+      attributionCount++;
+    }
+  }
+  console.log(`  ✅ Seeded ${attributionCount} revenue attributions for completed campaign`);
+
+  // Active Campaign Performance (index 2) - 8 customers total
+  const activeCampaign = campaigns[2];
+  const activeMessage = campaignMessages[2];
+  const activeSegmentCustomers = segmentSlices[3]; // slice(40, 48) -> 8 customers
+
+  // Distribution: 2 QUEUED, 3 SENT, 2 DELIVERED, 1 OPENED
+  const activeStatusDistribution = [
+    CommunicationStatus.QUEUED, CommunicationStatus.QUEUED,
+    CommunicationStatus.SENT, CommunicationStatus.SENT, CommunicationStatus.SENT,
+    CommunicationStatus.DELIVERED, CommunicationStatus.DELIVERED,
+    CommunicationStatus.OPENED
+  ];
+
+  for (let idx = 0; idx < activeSegmentCustomers.length; idx++) {
+    const customer = activeSegmentCustomers[idx];
+    const status = activeStatusDistribution[idx];
+    const logId = uuidv4();
+    const sentAt = activeCampaign.launchedAt || new Date();
+    const deliveredAt = (status === CommunicationStatus.DELIVERED || status === CommunicationStatus.OPENED)
+      ? new Date(sentAt.getTime() + randomInt(1, 10) * 1000)
+      : null;
+
+    // 1. Audience
+    await prisma.campaignAudience.create({
+      data: {
+        id: uuidv4(),
+        tenantId: tenant.id,
+        campaignId: activeCampaign.id,
+        customerId: customer.id,
+        segmentId: activeCampaign.segmentId,
+        status: CampaignAudienceStatus.INCLUDED,
+      }
+    });
+
+    // 2. Comm Log
+    await prisma.communicationLog.create({
+      data: {
+        id: logId,
+        tenantId: tenant.id,
+        campaignId: activeCampaign.id,
+        messageId: activeMessage.id,
+        customerId: customer.id,
+        channel: activeCampaign.channel,
+        status,
+        provider: 'SendGrid',
+        providerMessageId: `msg-${uuidv4().substring(0, 8)}`,
+        sentAt: status === CommunicationStatus.QUEUED ? null : sentAt,
+        deliveredAt,
+        idempotencyKey: `${activeCampaign.id}-${customer.id}-${activeMessage.id}`,
+      }
+    });
+
+    // 3. Delivery receipts
+    if (deliveredAt) {
+      await prisma.deliveryReceipt.create({
+        data: {
+          id: uuidv4(),
+          tenantId: tenant.id,
+          communicationLogId: logId,
+          eventType: DeliveryEventType.DELIVERED,
+          occurredAt: deliveredAt,
+          processedAt: new Date(deliveredAt.getTime() + 500),
+        }
+      });
+
+      if (status === CommunicationStatus.OPENED) {
+        const openedAt = new Date(deliveredAt.getTime() + randomInt(5, 60) * 1000);
+        await prisma.deliveryReceipt.create({
+          data: {
+            id: uuidv4(),
+            tenantId: tenant.id,
+            communicationLogId: logId,
+            eventType: DeliveryEventType.OPENED,
+            occurredAt: openedAt,
+            processedAt: new Date(openedAt.getTime() + 500),
+          }
+        });
+      }
+    }
+  }
+  console.log('  ✅ Seeded active campaign logs and receipts');
 
   // ==============================
   // 12. CHANNEL PROVIDERS

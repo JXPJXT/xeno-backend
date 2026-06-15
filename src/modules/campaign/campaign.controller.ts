@@ -80,6 +80,16 @@ export class CampaignController {
     return this.campaignService.findAll(tenantId);
   }
 
+  @Get('segments')
+  @ApiOperation({
+    summary: 'List all segments for the tenant',
+    description: 'Returns all segments with name, description, type, rules and customer count.',
+  })
+  @ApiResponse({ status: 200, description: 'Segment list' })
+  async findSegments(@TenantId() tenantId: string) {
+    return this.campaignService.findSegments(tenantId);
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
